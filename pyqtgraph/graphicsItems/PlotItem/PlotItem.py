@@ -547,6 +547,10 @@ class PlotItem(GraphicsWidget):
             item.setDownsampling(*self.downsampleMode())
             item.setClipToView(self.clipToViewMode())
             
+            item.setNormalizeMode(kargs.get('normalize', False)) # SpinApp
+            item.setTmrMode(kargs.get('tmr', False)) # SpinApp
+            item.setMonotonicColorMode(kargs.get('monotonic', False)) # SpinApp
+            
             ## Hide older plots if needed
             self.updateDecimation()
             
@@ -863,6 +867,27 @@ class PlotItem(GraphicsWidget):
 
     def widgetGroupInterface(self):
         return (None, PlotItem.saveState, PlotItem.restoreState)
+    
+    @QtCore.Slot()
+    def updateNormalizeMode(self, b):
+        for c in self.curves:
+            c.setNormalizeMode(b)
+        self.enableAutoRange()
+        self.recomputeAverages()
+        
+    @QtCore.Slot()
+    def updateTmrMode(self, b):
+        for c in self.curves:
+            c.setTmrMode(b)
+        self.enableAutoRange()
+        self.recomputeAverages()
+        
+    @QtCore.Slot()
+    def updateMonotonicColorMode(self, b):
+        for c in self.curves:
+            c.setMonotonicColorMode(b)
+        self.enableAutoRange()
+        self.recomputeAverages()
       
     @QtCore.Slot(bool)
     def updateSpectrumMode(self, b=None):

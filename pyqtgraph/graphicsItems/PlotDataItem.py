@@ -586,6 +586,7 @@ class PlotDataItem(GraphicsObject):
             'connect': 'auto',
             'skipFiniteCheck': False, 
             'monotonicColorMode': False, # SpinApp
+            'tmrMode': False, # SpinApp
             'normalizeMode': False, # SpinApp
             'fftMode': False,
             'logMode': [False, False],
@@ -727,7 +728,7 @@ class PlotDataItem(GraphicsObject):
         self.updateItems(styleUpdate=False)
         self.informViewBoundsChanged()
 
-    def setColorMonotonicMode(self, state):
+    def setMonotonicColorMode(self, state):
         """SpinApp"""
         if self.opts['monotonicColorMode'] == state:
             return
@@ -735,6 +736,15 @@ class PlotDataItem(GraphicsObject):
         self._datasetMapped  = None
         self._datasetDisplay = None
         self.updateItems()
+        self.informViewBoundsChanged()
+        
+    def setTmrMode(self, state):
+        if self.opts['tmrMode'] == state:
+            return
+        self.opts['tmrMode'] = state
+        self._datasetMapped  = None
+        self._datasetDisplay = None
+        self.updateItems(styleUpdate=False)
         self.informViewBoundsChanged()
 
     def setNormalizeMode(self, state):
@@ -1482,6 +1492,9 @@ class PlotDataItem(GraphicsObject):
                 y = y.astype(np.uint8)
             if x.dtype == bool:
                 x = x.astype(np.uint8)
+                
+            if self.opts['tmrMode']: # SpinApp
+                x, y = self._tmrTransform(x, y)
 
             if self.opts['normalizeMode']: # SpinApp
                 x, y = self._normalizeData(x, y)
@@ -1826,6 +1839,18 @@ class PlotDataItem(GraphicsObject):
                 update_needed = True
         if update_needed:
             self.updateItems(styleUpdate=False)
+            
+    @staticmethod
+    def _tmrTransform(x, y): # SpinApp
+        if len(y) == 0:
+            return x, y
+        
+        R_ap = np.max(y)
+        R_p = np.min(y)
+        
+        TMR = (R_ap - R_p)/R_p
+        x, y = PlotDataItem._normalizeData(x, y)
+        return x, y * TMR * 100
 
     @staticmethod
     def _normalizeData(x, y): # SpinApp
