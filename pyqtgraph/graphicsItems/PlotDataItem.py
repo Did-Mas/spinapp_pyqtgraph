@@ -570,8 +570,8 @@ class PlotDataItem(GraphicsObject):
         self.curve.sigClicked.connect(self.sigClicked)
         self.scatter.sigClicked.connect(self.scatterClicked)
         self.scatter.sigHovered.connect(self.sigPointsHovered)
-        
-        # update-required notifications are handled through properties to allow future 
+
+        # update-required notifications are handled through properties to allow future
         # management through the QDynamicPropertyChangeEvent sent on any change.
         self.setProperty('xViewRangeWasChanged', False)
         self.setProperty('yViewRangeWasChanged', False)
@@ -585,12 +585,16 @@ class PlotDataItem(GraphicsObject):
             # defaults to 'all', unless overridden to 'finite' for log-scaling
             'connect': 'auto',
             'skipFiniteCheck': False, 
+            'monotonicColorMode': False, # SpinApp
+            'normalizeMode': False, # SpinApp
             'fftMode': False,
             'logMode': [False, False],
             'derivativeMode': False,
             'phasemapMode': False,
             'alphaHint': 1.0,
             'alphaMode': False,
+            'offset': 0.0, # SpinApp
+            'offsetMultiplier': 0.0, # SpinApp
 
             'pen': (200,200,200),
             'shadowPen': None,
@@ -620,17 +624,17 @@ class PlotDataItem(GraphicsObject):
         }
         self.setCurveClickable(kwargs.get('clickable', False))
         self.setData(*args, **kwargs)
-    
+
     # Fix "NotImplementedError: QGraphicsObject.paint() is abstract and must be overridden"
     def paint(self, *args):
         ...
-    
+
     # Compatibility with direct property access to previous xData and yData structures:
     @property
     def xData(self):
         if self._dataset is None: return None
         return self._dataset.x
-        
+
     @property
     def yData(self):
         if self._dataset is None: return None
@@ -711,6 +715,37 @@ class PlotDataItem(GraphicsObject):
         self.opts['alphaHint'] = alpha
         self.opts['alphaMode'] = auto
         self.setOpacity(alpha)
+
+    def setOffset(self, offset: float, multiplier: float):
+        """SpinApp"""
+        if self.opts['offset'] == offset and self.opts['offsetMultiplier'] == multiplier:
+            return
+        self.opts['offset'] = offset
+        self.opts['offsetMultiplier'] = multiplier
+        self._datasetMapped  = None
+        self._datasetDisplay = None
+        self.updateItems(styleUpdate=False)
+        self.informViewBoundsChanged()
+
+    def setColorMonotonicMode(self, state):
+        """SpinApp"""
+        if self.opts['monotonicColorMode'] == state:
+            return
+        self.opts['monotonicColorMode'] = state
+        self._datasetMapped  = None
+        self._datasetDisplay = None
+        self.updateItems()
+        self.informViewBoundsChanged()
+
+    def setNormalizeMode(self, state):
+        """SpinApp"""
+        if self.opts['normalizeMode'] == state:
+            return
+        self.opts['normalizeMode'] = state
+        self._datasetMapped  = None
+        self._datasetDisplay = None
+        self.updateItems(styleUpdate=False)
+        self.informViewBoundsChanged()
 
     def setFftMode(self, state: bool):
         """
@@ -973,7 +1008,7 @@ class PlotDataItem(GraphicsObject):
         if self.opts['symbolBrush'] == brush:
             return
         self.opts['symbolBrush'] = brush
-        #self.scatter.setSymbolBrush(brush)
+        # self.scatter.setSymbolBrush(brush)
         self.updateItems(styleUpdate=True)
 
     def setSymbolSize(self, size: int):
@@ -1089,7 +1124,7 @@ class PlotDataItem(GraphicsObject):
         self.opts['dynamicRangeLimit'] = limit  # can be None
         self._datasetDisplay = None  # invalidate display data
         self.updateItems(styleUpdate=False)
-        
+
     def setSkipFiniteCheck(self, skipFiniteCheck: bool):
         """
         Toggle performance option to bypass the finite check.
@@ -1214,7 +1249,7 @@ class PlotDataItem(GraphicsObject):
         if 'connect' in kwargs:
             self.opts['connect'] = kwargs['connect']
             self.setProperty('styleWasChanged', True)
-            
+
         if 'skipFiniteCheck' in kwargs:
             self.opts['skipFiniteCheck'] = kwargs['skipFiniteCheck']
 
@@ -1237,17 +1272,17 @@ class PlotDataItem(GraphicsObject):
             if k in kwargs:
                 self.opts[k] = kwargs[k]
                 self.setProperty('styleWasChanged', True)
-        #curveArgs = {}
-        #for k in ['pen', 'shadowPen', 'fillLevel', 'brush']:
-            #if k in kwargs:
-                #self.opts[k] = kwargs[k]
-            #curveArgs[k] = self.opts[k]
+        # curveArgs = {}
+        # for k in ['pen', 'shadowPen', 'fillLevel', 'brush']:
+        # if k in kwargs:
+        # self.opts[k] = kwargs[k]
+        # curveArgs[k] = self.opts[k]
 
-        #scatterArgs = {}
-        #for k,v in [('symbolPen','pen'), ('symbolBrush','brush'), ('symbol','symbol')]:
-            #if k in kwargs:
-                #self.opts[k] = kwargs[k]
-            #scatterArgs[v] = self.opts[k]
+        # scatterArgs = {}
+        # for k,v in [('symbolPen','pen'), ('symbolBrush','brush'), ('symbol','symbol')]:
+        # if k in kwargs:
+        # self.opts[k] = kwargs[k]
+        # scatterArgs[v] = self.opts[k]
 
         if y is None or len(y) == 0:  # empty data is represented as None
             yData = None
@@ -1257,7 +1292,7 @@ class PlotDataItem(GraphicsObject):
             yData = y.view(np.ndarray)
             if x is None:
                 x = np.arange(len(y))
-                
+
         if x is None or len(x) == 0:  # empty data is represented as None
             xData = None
         else:  # actual data is represented by ndarray
@@ -1341,6 +1376,15 @@ class PlotDataItem(GraphicsObject):
                 if k in self.opts:
                     scatterArgs[v] = self.opts[k]
 
+            if self.opts["monotonicColorMode"]: # SpinApp
+                if self._dataset is not None:
+                    x = self._dataset.x
+                    x_diff = np.diff(x)
+                    brushes = [fn.mkBrush(255, 0, 0, 255) if x_diff[i] > 0 else fn.mkBrush(0, 0, 255, 255) for i in range(len(x_diff))]
+                    brushes.append(brushes[-1])
+                    scatterArgs["brush"] = brushes
+                    scatterArgs["pen"] = None
+
         dataset = self._getDisplayDataset()
         if dataset is None:  # then we have nothing to show
             self.curve.hide()
@@ -1349,7 +1393,7 @@ class PlotDataItem(GraphicsObject):
 
         x = dataset.x
         y = dataset.y
-        #scatterArgs['mask'] = self.dataMask
+        # scatterArgs['mask'] = self.dataMask
         if (
             self.opts['pen'] is not None
             or (
@@ -1430,7 +1474,7 @@ class PlotDataItem(GraphicsObject):
         ):
             return self._datasetDisplay
 
-        # Apply data mapping functions if mapped dataset is not yet available: 
+        # Apply data mapping functions if mapped dataset is not yet available:
         if self._datasetMapped is None:
             x = self._dataset.x
             y = self._dataset.y
@@ -1438,6 +1482,10 @@ class PlotDataItem(GraphicsObject):
                 y = y.astype(np.uint8)
             if x.dtype == bool:
                 x = x.astype(np.uint8)
+
+            if self.opts['normalizeMode']: # SpinApp
+                x, y = self._normalizeData(x, y)
+
             if self.opts['fftMode']:
                 x, y = self._fourierTransform(x, y)
                 # Ignore the first bin for fft data if we have a logx scale
@@ -1451,19 +1499,22 @@ class PlotDataItem(GraphicsObject):
                 x = self._dataset.y[:-1]
                 y = np.diff(self._dataset.y) / np.diff(self._dataset.x)
 
+            offset = self.opts['offset'] if not self.opts['normalizeMode'] else 1.1 # SpinApp
+            y = y + (offset * self.opts['offsetMultiplier']) # SpinApp
+
             dataset = PlotDataset(
                 x,
                 y,
                 self._dataset.xAllFinite,
                 self._dataset.yAllFinite
             )
-            
+
             if True in self.opts['logMode']:
                 # Apply log scaling for x and/or y-axis
                 dataset.applyLogMapping( self.opts['logMode'] )
 
             self._datasetMapped = dataset
-        
+
         # apply processing that affects the on-screen display of data:
         x = self._datasetMapped.x
         y = self._datasetMapped.y
@@ -1750,11 +1801,11 @@ class PlotDataItem(GraphicsObject):
     # has already been invalidated. However, responding here will make PlotDataItem
     # update curve and scatter later than intended.
     #   super().viewTransformChanged() # this invalidates the viewRect() cache!
-        
+
     @QtCore.Slot(object, object)
     @QtCore.Slot(object, object, object)
     def viewRangeChanged(self, vb=None, ranges=None, changed=None):
-        # view range has changed; re-plot if needed 
+        # view range has changed; re-plot if needed
         update_needed = False
         if changed is None or changed[0]: 
             # if ranges is not None:
@@ -1775,6 +1826,14 @@ class PlotDataItem(GraphicsObject):
                 update_needed = True
         if update_needed:
             self.updateItems(styleUpdate=False)
+
+    @staticmethod
+    def _normalizeData(x, y): # SpinApp
+        if len(y) == 0:
+            return x, y
+        if np.max(y) == np.min(y):
+            return x, np.array([0.5] * len(y))
+        return x, (y - np.min(y)) / (np.max(y) - np.min(y))
 
     @staticmethod
     def _fourierTransform(x, y):
